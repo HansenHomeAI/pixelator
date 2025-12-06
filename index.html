@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RetroPixel | Obsidian</title>
+    <style>
+        /* --- Obsidian / Liquid Glass CSS --- */
+        :root {
+            --bg-color: #000000;
+            --glass-bg: rgba(10, 10, 10, 0.75);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --text-main: #ffffff;
+            --text-muted: #666666;
+            --accent: #ffffff;
+            --font-stack: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Inter", Roboto, sans-serif;
+            --radius-pill: 999px;
+            --bar-height: 64px;
+        }
+
+        /* --- Reset & Base --- */
+        * { box-sizing: border-box; margin: 0; padding: 0; outline: none; user-select: none; }
+        
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: var(--font-stack);
+            height: 100vh;
+            width: 100vw;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* --- Canvas Area --- */
+        #canvas-wrapper {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            padding-bottom: 100px; /* Space for the dock */
+            z-index: 1;
+            /* Subtle radial gradient to give depth to the void */
+            background: radial-gradient(circle at center, #111111 0%, #000000 80%);
+            transition: background 0.3s ease;
+        }
+
+        canvas {
+            max-width: 100%;
+            max-height: 100%; /* Constrained by wrapper padding */
+            object-fit: contain;
+            box-shadow: 0 40px 80px -20px rgba(0,0,0,0.8);
+            opacity: 0;
+            transform: scale(0.95);
+            transition: opacity 0.5s ease, transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+
+        canvas.active { 
+            opacity: 1; 
+            transform: scale(1);
+        }
+
+        /* --- Empty State --- */
+        #drop-zone {
+            position: absolute;
+            top: 45%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+            z-index: 0;
+            opacity: 0.6;
+        }
+        
+        #drop-zone svg {
+            color: #333;
+            margin-bottom: 16px;
+        }
+
+        #drop-zone h1 {
+            font-size: 16px;
+            font-weight: 500;
+            color: #444;
+            letter-spacing: 0.02em;
+        }
+
+        /* --- Dock (Toolbar) --- */
+        .dock-container {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+            width: auto;
+        }
+
+        .glass-dock {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-pill);
+            height: var(--bar-height);
+            padding: 0 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 
+                0 20px 40px -10px rgba(0,0,0,0.6),
+                inset 0 1px 0 rgba(255,255,255,0.08);
+            transition: all 0.3s ease;
+        }
+
+        .glass-dock:hover {
+            border-color: rgba(255,255,255,0.2);
+            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.7);
+        }
+
+        /* --- Dividers --- */
+        .divider {
+            width: 1px;
+            height: 24px;
+            background: rgba(255,255,255,0.1);
+            margin: 0 8px;
+        }
+
+        /* --- Icon Buttons --- */
+        .icon-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-main);
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+            position: relative;
+        }
+
+        .icon-btn:hover {
+            background: rgba(255,255,255,0.1);
+            /* Removed vertical transform for stability */
+            box-shadow: 0 0 5px rgba(255, 255, 255, 0.2); 
+        }
+
+        .icon-btn:active {
+            transform: scale(0.95);
+            box-shadow: none;
+        }
+
+        .icon-btn.primary {
+            background: #fff;
+            color: #000;
+        }
+
+        .icon-btn.primary:hover {
+            background: #e0e0e0;
+            /* Enhanced hover effect without shifting */
+            box-shadow: 0 0 15px rgba(255,255,255,0.3); 
+        }
+
+        /* Tooltip hint */
+        .icon-btn::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            top: -36px;
+            left: 50%;
+            transform: translateX(-50%) translateY(10px);
+            background: rgba(0,0,0,0.8);
+            color: #fff;
+            font-size: 11px;
+            padding: 4px 8px;
+            border-radius: 4px;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.2s ease;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .icon-btn:hover::after {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        /* --- Slider Groups --- */
+        .slider-group {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 0 12px;
+            height: 100%;
+            position: relative;
+        }
+
+        .slider-icon {
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+        }
+
+        .slider-meta {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            width: 120px; /* Fixed width for sliders */
+        }
+
+        .slider-label {
+            font-size: 9px;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: #555;
+            margin-bottom: 6px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .value-display {
+            color: #fff;
+            font-weight: 600;
+        }
+
+        /* Range Input */
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+        }
+
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: rgba(255,255,255,0.1);
+            border-radius: 2px;
+        }
+        
+        input[type=range]:hover::-webkit-slider-runnable-track {
+            background: rgba(255,255,255,0.2);
+        }
+
+        input[type=range]::-webkit-slider-thumb {
+            height: 12px;
+            width: 12px;
+            border-radius: 50%;
+            background: #fff;
+            cursor: pointer;
+            -webkit-appearance: none;
+            margin-top: -4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.5);
+            transition: transform 0.2s;
+        }
+
+        input[type=range]::-webkit-slider-thumb:hover {
+            transform: scale(1.5);
+        }
+
+        #file-input { display: none; }
+
+        /* Mobile Responsive */
+        @media (max-width: 600px) {
+            .glass-dock {
+                height: auto;
+                flex-wrap: wrap;
+                justify-content: center;
+                padding: 12px;
+                border-radius: 24px;
+                width: 90vw;
+            }
+            .divider { display: none; }
+            .slider-group { width: 100%; margin-bottom: 8px; }
+            .slider-meta { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Main Canvas Area -->
+    <div id="canvas-wrapper">
+        <div id="drop-zone">
+            <!-- Icon: Image Plus -->
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                <polyline points="21 15 16 10 5 21"></polyline>
+            </svg>
+            <h1>Drop Image</h1>
+        </div>
+        <canvas id="pixelCanvas"></canvas>
+    </div>
+
+    <!-- Dock Toolbar -->
+    <div class="dock-container">
+        <div class="glass-dock">
+            
+            <!-- Upload Button -->
+            <label for="file-input" class="icon-btn" data-tooltip="Upload Image">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="17 8 12 3 7 8"></polyline>
+                    <line x1="12" y1="3" x2="12" y2="15"></line>
+                </svg>
+            </label>
+            <input type="file" id="file-input" accept="image/png, image/jpeg, image/webp">
+
+            <div class="divider"></div>
+
+            <!-- Slider: Pixel Size -->
+            <div class="slider-group">
+                <div class="slider-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="3" width="7" height="7"></rect>
+                        <rect x="14" y="3" width="7" height="7"></rect>
+                        <rect x="14" y="14" width="7" height="7"></rect>
+                        <rect x="3" y="14" width="7" height="7"></rect>
+                    </svg>
+                </div>
+                <div class="slider-meta">
+                    <div class="slider-label">
+                        <span>Block Size</span>
+                        <span id="pixel-val" class="value-display">12px</span>
+                    </div>
+                    <input type="range" id="pixel-size" min="2" max="100" value="12">
+                </div>
+            </div>
+
+            <div class="divider"></div>
+
+            <!-- Slider: Color Depth -->
+            <div class="slider-group">
+                <div class="slider-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"></path>
+                    </svg>
+                </div>
+                <div class="slider-meta">
+                    <div class="slider-label">
+                        <span>Colors</span>
+                        <span id="color-val" class="value-display">16</span>
+                    </div>
+                    <input type="range" id="color-amount" min="2" max="64" value="16">
+                </div>
+            </div>
+
+            <div class="divider"></div>
+
+            <!-- Download Button -->
+            <button class="icon-btn primary" id="download-btn" data-tooltip="Download PNG">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="7 10 12 15 17 10"></polyline>
+                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+            </button>
+            
+        </div>
+    </div>
+
+<script>
+    /* --- Logic --- */
+    const fileInput = document.getElementById('file-input');
+    const canvas = document.getElementById('pixelCanvas');
+    const ctx = canvas.getContext('2d');
+    const pixelSizeInput = document.getElementById('pixel-size');
+    const colorAmountInput = document.getElementById('color-amount');
+    const downloadBtn = document.getElementById('download-btn');
+    const dropZone = document.getElementById('drop-zone');
+    const wrapper = document.getElementById('canvas-wrapper');
+
+    // Labels
+    const pixelVal = document.getElementById('pixel-val');
+    const colorVal = document.getElementById('color-val');
+
+    let originalImage = null;
+
+    // --- Init Event Listeners ---
+
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files && e.target.files[0]) loadImage(e.target.files[0]);
+    });
+
+    // Drag & Drop
+    window.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        wrapper.style.background = 'radial-gradient(circle at center, #222 0%, #000 70%)'; 
+    });
+
+    window.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        wrapper.style.background = ''; 
+    });
+
+    window.addEventListener('drop', (e) => {
+        e.preventDefault();
+        wrapper.style.background = '';
+        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+            loadImage(e.dataTransfer.files[0]);
+        }
+    });
+
+    // Sliders
+    pixelSizeInput.addEventListener('input', () => {
+        pixelVal.innerText = pixelSizeInput.value + 'px';
+        requestAnimationFrame(render);
+    });
+
+    colorAmountInput.addEventListener('input', () => {
+        colorVal.innerText = colorAmountInput.value;
+        requestAnimationFrame(render);
+    });
+
+    // Download
+    downloadBtn.addEventListener('click', () => {
+        if (!originalImage) return;
+        const link = document.createElement('a');
+        link.download = 'retropixel_' + Date.now() + '.png';
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+    });
+
+    // --- Rendering Functions ---
+
+    function loadImage(file) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            originalImage = new Image();
+            originalImage.onload = () => {
+                canvas.width = originalImage.width;
+                canvas.height = originalImage.height;
+                
+                dropZone.style.display = 'none'; // Hide completely on first load
+                canvas.classList.add('active');
+                
+                render();
+            };
+            originalImage.src = event.target.result;
+        };
+        reader.readAsDataURL(file);
+    }
+
+    function render() {
+        if (!originalImage) return;
+
+        const size = parseInt(pixelSizeInput.value);
+        const colors = parseInt(colorAmountInput.value);
+        const w = canvas.width;
+        const h = canvas.height;
+
+        // 1. Downscale Phase
+        const smallW = Math.ceil(w / size);
+        const smallH = Math.ceil(h / size);
+
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = smallW;
+        tempCanvas.height = smallH;
+        const tempCtx = tempCanvas.getContext('2d');
+        
+        // Draw small
+        tempCtx.drawImage(originalImage, 0, 0, smallW, smallH);
+
+        // 2. Color Quantization Phase
+        const imageData = tempCtx.getImageData(0, 0, smallW, smallH);
+        const data = imageData.data;
+
+        const factor = 255 / (colors - 1);
+
+        for (let i = 0; i < data.length; i += 4) {
+            // Apply color reduction math
+            data[i] = Math.round(data[i] / factor) * factor;     // R
+            data[i+1] = Math.round(data[i+1] / factor) * factor; // G
+            data[i+2] = Math.round(data[i+2] / factor) * factor; // B
+        }
+
+        // Put modified pixels back
+        tempCtx.putImageData(imageData, 0, 0);
+
+        // 3. Upscale Phase
+        ctx.imageSmoothingEnabled = false; 
+        ctx.mozImageSmoothingEnabled = false;
+        ctx.webkitImageSmoothingEnabled = false;
+        
+        ctx.clearRect(0, 0, w, h);
+        ctx.drawImage(tempCanvas, 0, 0, smallW, smallH, 0, 0, w, h);
+    }
+</script>
+</body>
+</html>
